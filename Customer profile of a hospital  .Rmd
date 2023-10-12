@@ -1,0 +1,720 @@
+---
+title: "Customer Profile of the Hospital"
+output:
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    theme: lumen
+    vertical_layout: fill
+    smooth_scroll: true
+    runtime: shiny
+
+    
+    
+ 
+    
+   
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dplyr)
+library(highcharter)
+library(tidyverse)
+library(lubridate)
+library(rmarkdown)
+library(shiny)
+library(geojsonio)
+load("~/Downloads/dta_test.RData")
+dta_time <- dta_test  %>%
+  mutate(date= as.Date(encounter_hospitalization_start, "%Y-%m-%d"), 
+         month=format.Date(date, "%Y-%m"),
+         
+         month_name_abb = month(date, label = TRUE),
+         month_name_full = month(date, label = TRUE, abbr = FALSE),
+         month_2 = format.Date(date, "%m"),
+         year=format.Date(date, "%Y"),
+         weeknum=format.Date(date, "%W"),
+         weekdays=weekdays(date),
+         hours=format.Date(encounter_hospitalization_start, "%H")) %>%
+  mutate(age = as.integer(format(Sys.Date(), "%Y")) - as.integer(format(patient_birthdate, "%Y"))) %>%
+  mutate(patient_age_group = case_when (
+    age < 18 ~ "< 18",
+    age >= 18 & age <= 30 ~ "18 to 30",
+    age > 30 & age <= 40 ~ "31 to 40",
+    age > 40 & age <= 50 ~ "41 to 50",
+    age > 50 & age <= 60 ~ "51 to 60",
+    age > 60 & age <= 70 ~ "61 to 70",
+    age > 70 ~ "> 70",
+    TRUE ~ "Unknow"
+  ))
+
+
+TotalPatient_Genders <- dta_time %>% 
+  group_by(patient_gender) %>%
+  summarise(total_patients = n())
+
+TotalPatient_Nhomtuoi_Genders <- dta_time %>%
+  group_by(patient_age_group, patient_gender) %>%
+  summarise(total_patients = n()) %>%
+  arrange(desc(total_patients))
+
+VungMien <- dta_time %>%
+  mutate(patient_region = case_when (
+    patient_province == "Hà Nội" ~ "Hà Nội",
+    patient_province %in% c("Bắc Ninh", "Hà Nam", "Hải Dương", "Hải Phòng", "Hưng Yên", "Nam Định", "Ninh Bình", "Phú Thọ", "Thái Bình", "Vĩnh Phúc") ~ "DB sông Hồng",
+    patient_province %in% c("Hà Tĩnh", "Nghệ An", "Quảng Bình", "Quảng Trị", "Thanh Hóa", "Thừa Thiên Huế") ~ "Bắc Trung Bộ",
+    patient_province %in% c("Bắc Giang", "Bắc Kạn", "Cao Bằng", "Hà Giang", "Lạng Sơn", "Quảng Ninh", "Thái Nguyên") ~ "Đông Bắc Bộ",
+    patient_province %in% c("Điện Biên", "Hoà Bình", "Lai Châu", "Lào Cai", "Sơn La", "Tuyên Quang", "Yên Bái") ~ "Tây Bắc Bộ",
+    patient_province %in% c(" Đà Nẵng, Quảng Nam, Quảng Ngãi, Bình Định, Phú Yên, Khánh Hòa, Ninh Thuận, Bình Thuận, Kon Tum, Gia Lai, Đắk Lắk, Đắk Nông,Lâm Đồng") ~ "Nam Trung Bộ",
+    patient_province %in% c("Hồ Chí Minh, Đồng Nai, Bà Rịa-Vũng Tàu, Bình Dương, Bình Phước, Tây Ninh,  Cần Thơ, Long An, Tiền Giang, Bến Tre, Vĩnh Long, Trà Vinh, Đồng Tháp, An Giang, Kiên Giang, Hậu Giang, Sóc Trăng, Bạc Liêu, Cà Mau.") ~ "Nam Bộ"
+  ))
+
+```
+
+# Overview 
+
+Row {data-height="100"}
+-------------------------------------
+```{=html}
+<style type="text/css">
+.value-box .value {
+    color: white;
+}
+.value-box .caption {
+    color: white;
+}
+</style>
+```
+
+### Total revenue (VND billion)
+```{r}
+sum_revenue <- dta_time %>%
+  filter(year %in% c("2020","2021")) %>%
+  summarise(Total_Revenue= sum(round(service_total_paid, digits = 2)))
+
+
+```
+
+```{r}
+sum_rev_rounded <- round(sum_revenue/1E9, digits = 2)
+valueBox(sum_rev_rounded, color = "#7267CB")
+```
+
+
+### Total patient
+```{r}
+sum_patient <- dta_time %>%
+  filter(year %in% c("2020","2021")) %>%
+  summarise(Total_patient = n())
+valueBox(sum_patient, color = "#98BAE7")
+```
+
+### Average revenue per patien
+```{r}
+average_rev <- round(sum_revenue/sum_patient, digits=2)
+valueBox(average_rev, color = "#00C4FF")
+```
+
+### Overview of the number of patients and hospital revenue in 2020 and 2021
+
+```{r,echo=FALSE, warning = FALSE, message = FALSE}
+TotalPatients_year <- dta_time %>%
+ filter(year %in% c("2020", "2021")) %>%
+  group_by(month_name_full, year) %>%
+  summarise(total_patients = n(), Total_Revenue= sum(round(service_total_paid/1e9,digits = 2)))
+
+h1 <- hchart(
+  TotalPatients_year, type = "column", hcaes(month_name_full, total_patients, group = year),showInLegend = TRUE) %>%
+  hc_title(text = paste0("Total hospital patients")) %>%
+    hc_subtitle(text = paste0(" 1/2020 - 12/2021"),
+              fontSize = "8px") %>%
+  hc_xAxis(title = list(text = "Month")) %>%
+  hc_yAxis(title = list(text = "Number of Patient")) %>%
+  hc_title(
+    text = "Total hospital patients",
+    style = list(color = "#333333", fontSize = "16px", fontWeight = "bold")
+  ) %>%
+  hc_colors(c("#82C3EC", "#4B56D2")) %>%
+  hc_plotOptions(
+    dataLabels = list(
+      enabled = TRUE,
+      format = "{point.y}",
+      style = list(fontSize = "10px")
+    )
+  ) %>%
+  hc_legend(
+    enabled = TRUE
+  )
+
+TotalRevenue2020 <- dta_time %>%
+  filter(year == "2020") %>%
+  group_by(month_name_full) %>%
+  summarise(Total_Revenue= sum(round(service_total_paid/1e9,digits = 2)))
+TotalRevenue2021 <- dta_time %>%
+  filter(year == "2021") %>%
+  group_by(month_name_full) %>%
+  summarise(Total_Revenue= sum(round(service_total_paid/1e9,digits = 2)))
+
+h2 <- hchart(TotalRevenue2020, type = "line", hcaes(month_name_full, Total_Revenue), showInlegend = TRUE) %>%
+  hc_add_series(TotalRevenue2021, type = "line", hcaes(month_name_full, Total_Revenue),showInLegend = FALSE) %>%
+  hc_title(text = paste0("Total revenue of the hospital")) %>%
+  hc_subtitle(text = paste0("1/2020 - 12/2021"),
+              fontSize = "8px") %>%
+  hc_xAxis(title = list(text = "Month")) %>%
+  hc_yAxis(title = list(text = "Total Revenue")) %>%
+  hc_title(
+    text = "Total revenue of the hospital",
+    style = 
+      list(color = "#333333", fontSize = "16px", fontWeight = "bold")
+  ) %>%
+  hc_colors(c("#82C3EC", "#4B56D2")) %>%
+  hc_plotOptions(
+    column = list(stacking = 'normal'),
+    dataLabels = list(
+      enabled = TRUE,
+      format = "{point.y}",
+      style = list(fontSize = "10px"))) %>%
+  hc_add_annotation()
+
+
+hw_grid(h1,h2,ncol = 2)
+    
+```
+
+
+
+
+
+
+
+# Patient Type 
+Column 
+-------------------------------------
+### Inpatient
+```{r,echo=FALSE, warning = FALSE, message = FALSE, fig.width=10}
+Doanhthu_N_2020 <- dta_time %>% 
+    filter( year==2020, is_in_patient == "N") %>%
+    group_by(month_name_full) %>%
+    summarise(Total_Revenue= sum(round(service_total_paid/1e9,digits = 2)))
+  
+  Doanhthu_N_2021 <- dta_time %>% 
+    filter( year==2021, is_in_patient == "N") %>%
+    group_by(month_name_full) %>%
+    summarise(Total_Revenue= sum(round(service_total_paid/1e9,digits = 2)))
+  
+  highchart() %>%
+  hc_add_series(Doanhthu_N_2020, type = "line", hcaes(month_name_full, Total_Revenue), showInlegend = TRUE, name ="Inpatient revenue for 2020") %>%
+    hc_add_series(Doanhthu_N_2021, type = "line", hcaes(month_name_full, Total_Revenue), showInlegend = TRUE, name = "Inpatient revenue for 2021") %>%
+    hc_title(text = paste0("Total revenue generated from inpatient services at the hospital")) %>%
+    hc_subtitle(text = paste0(" 1/2020 - 12/2020"),
+                fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Month")) %>%
+    hc_yAxis(title = list(text = "Total Revenue")) %>%
+    hc_title(
+      text = "Total revenue generated from inpatient services at the hospital",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#00E7FF", "#009EFF")) %>%
+    hc_legend(
+      align = "left",
+      verticalAlign = "top",
+      layout = "vertical",
+      x = 0,
+      y = 100)
+```
+
+### Outpatient
+```{r,echo=FALSE, warning = FALSE, message = FALSE, fig.width=10}
+Doanhthu_Y_2020 <- dta_time %>% 
+    filter( year==2020, is_in_patient == "Y") %>%
+    group_by(month_name_full) %>%
+    summarise(Total_Revenue= sum(round(service_total_paid/1e9,digits = 2)))
+  
+  Doanhthu_Y_2021 <- dta_time %>% 
+    filter( year==2021, is_in_patient == "Y") %>%
+    group_by(month_name_full) %>%
+    summarise(Total_Revenue= sum(round(service_total_paid/1e9,digits = 2)))
+  
+  highchart() %>%
+    hc_add_series(Doanhthu_Y_2020, type = "line", hcaes(month_name_full, Total_Revenue), showInlegend = TRUE, name ="Total revenue generated from outpatient services at the hospital 2020") %>%
+    hc_add_series(Doanhthu_Y_2021, type = "line", hcaes(month_name_full, Total_Revenue), showInlegend = TRUE, name = "Total revenue generated from outpatient services at the hospital 2021") %>%
+    hc_title(text = paste0("Total revenue generated from outpatient services at the hospital")) %>%
+    hc_subtitle(text = paste0("1/2021 - 12/2021"),
+                fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Month")) %>%
+    hc_yAxis(title = list(text = "Tota Revenue")) %>%
+    hc_title(
+      text = "Total revenue generated from outpatient services at the hospital",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#00E7FF", "#009EFF")) %>%
+    hc_legend(
+      align = "left",
+      verticalAlign = "top",
+      layout = "vertical",
+      x = 0,
+      y = 100)
+  
+    
+```
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+
+### 2020
+```{r,echo=FALSE, warning = FALSE, message = FALSE, fig.width=10}
+TotalPatientType_2020 <- dta_time %>%
+     filter(year %in% c("2020")) %>%
+     group_by(month_name_full, is_in_patient) %>%
+     summarise(total_patients = n())
+
+TotalIS_in_patient2020 <- dta_time %>% 
+  filter(year %in% c("2020")) %>%
+     group_by(is_in_patient) %>%
+     summarise(total_patients = n())
+
+hchart(
+  TotalPatientType_2020, type = "column", hcaes(x=month_name_full, y=total_patients, group = is_in_patient),showInLegend = TRUE) %>%
+  hc_add_series(TotalIS_in_patient2020, type = "pie", hcaes(is_in_patient,total_patients), showInLegend = FALSE) %>%
+  hc_title(text = paste0("Total number of patients by patient type")) %>%
+  hc_subtitle(text = paste0(" 1/2020  12/2020"),
+              fontSize = "8px") %>%
+  hc_xAxis(title = list(text = "Patient Type")) %>%
+  hc_yAxis(title = list(text = "Total Patient")) %>%
+  hc_title(
+    text = "Total number of patients by patient type",
+    style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+  ) %>%
+  hc_colors(c("#00E7FF", "#009EFF")) %>%
+  hc_plotOptions(
+    column = list(stacking = 'normal'),
+    dataLabels = list(
+      enabled = TRUE,
+      format = "{point.y}",
+      style = list(fontSize = "10px")
+    )
+  ) %>%
+  hc_plotOptions(
+    pie = list(
+      center = c('20%', '10%'), size = 50,
+      allowPointSelect = TRUE, innerSize = 15, depth =10, cursor = 'pointer',
+      dataLabels = list(enabled = TRUE, format = '<b>{point.name}</b>: <b>{point.percentage:.2f}%'))) %>%
+  hc_legend(
+    enabled = TRUE
+  )
+
+```
+
+### 2021
+```{r,echo=FALSE, warning = FALSE, message = FALSE, fig.width=10}
+TotalPatientType_2021 <- dta_time %>%
+     filter(year %in% c("2021")) %>%
+     group_by(month_name_full, is_in_patient) %>%
+     summarise(total_patients = n())
+
+TotalIS_in_patient2021 <- dta_time %>% 
+  filter(year %in% c("2021")) %>%
+     group_by(is_in_patient) %>%
+     summarise(total_patients = n())
+
+hchart(
+  TotalPatientType_2021, type = "column", hcaes(x=month_name_full, y=total_patients, group = is_in_patient),showInLegend = TRUE) %>%
+  hc_add_series(TotalIS_in_patient2021, type = "pie", hcaes(is_in_patient,total_patients), showInLegend = FALSE) %>%
+  hc_title(text = paste0("Total number of patients by patient type")) %>%
+  hc_subtitle(text = paste0("1/2021 - 12/2021"),
+              fontSize = "8px") %>%
+  hc_xAxis(title = list(text = "Patient Type")) %>%
+  hc_yAxis(title = list(text = "Total Patient")) %>%
+  hc_title(
+    text = "Total number of patients by patient type",
+    style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+  ) %>%
+  hc_colors(c("#00E7FF", "#009EFF")) %>%
+  hc_plotOptions(
+    column = list(stacking = 'normal'),
+    dataLabels = list(
+      enabled = TRUE,
+      format = "{point.y}",
+      style = list(fontSize = "10px")
+    )
+  ) %>%
+  hc_plotOptions(
+    pie = list(
+      center = c('60%', '10%'), size = 50,
+      allowPointSelect = TRUE, innerSize = 15, depth = 10, cursor = 'pointer',
+      dataLabels = list(enabled = TRUE, format = '<b>{point.name}</b>: <b>{point.percentage:.2f}%'))) %>%
+  hc_legend(
+    enabled = TRUE
+  )
+```
+
+
+
+
+
+# Age Group
+
+```{r}
+Nhohon18 <- dta_time %>%
+  filter(year == 2020, patient_age_group == "< 18") %>%
+  group_by(month_name_full) %>%
+  summarise(total_patient = n()) %>%
+  mutate(growth_rate = (total_patient - lag(total_patient)) / lag(total_patient) * 100)
+
+  h3 <- hchart(Nhohon18, type = "column", hcaes(month_name_full, total_patient), yAxis = 0, showInlegend = TRUE) %>%
+    hc_add_series(Nhohon18, type = "spline", hcaes(month_name_full, growth_rate), yAxis = 1, showInLegend = TRUE, name = "Growth rate (< 18)") %>%
+    hc_yAxis_multiples(
+      list(title = list(text = "Total Patient ")),
+      list(title = list(text = "growth rate"), opposite = TRUE)
+    ) %>%
+    hc_title(text = paste0("Total number of patients in the age group under 18")) %>%
+    hc_subtitle(text = paste0(" 1/2020 - 12/2020"), fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Total Patient")) %>%
+    hc_title(
+      text = "Total number of patients in the age group under 18",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#113CFC", "#F05454")) %>%
+    hc_plotOptions(
+      dataLabels = list(
+        enabled = TRUE,
+        format = "{point.y}",
+        style = list(fontSize = "10px")
+      )
+    )
+
+  Nhom18den30 <- dta_time %>%
+    filter(year == 2020, patient_age_group == "18 to 30") %>%
+    group_by(month_name_full) %>%
+    summarise(total_patient = n()) %>%
+    mutate(growth_rate = (total_patient - lag(total_patient)) / lag(total_patient) * 100)
+  
+  h4 <- hchart(Nhom18den30, type = "column", hcaes(month_name_full, total_patient), yAxis = 0, showInlegend = TRUE) %>%
+    hc_add_series(Nhom18den30, type = "spline", hcaes(month_name_full, growth_rate), yAxis = 1, showInLegend = TRUE, name = "Growth rate (18 - 30)") %>%
+    hc_yAxis_multiples(
+      list(title = list(text = "Total Patient ")),
+      list(title = list(text = "Growth rate "), opposite = TRUE)
+    ) %>%
+    hc_title(text = paste0("Total number of patients in the age group 18 to 30")) %>%
+    hc_subtitle(text = paste0(" 1/2020 - 12/2020"), fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Tota patient")) %>%
+    hc_title(
+      text = "Total number of patients in the age group 18 to 30",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#113CFC", "#F05454")) %>%
+    hc_plotOptions(
+      dataLabels = list(
+        enabled = TRUE,
+        format = "{point.y}",
+        style = list(fontSize = "10px")
+      )
+    ) 
+
+  
+
+  Nhom30den40 <- dta_time %>%
+    filter(year == 2020, patient_age_group == "31 to 40") %>%
+    group_by(month_name_full) %>%
+    summarise(total_patient = n()) %>%
+    mutate(growth_rate = (total_patient - lag(total_patient)) / lag(total_patient) * 100)
+  
+  h5 <- hchart(Nhom30den40, type = "column", hcaes(month_name_full, total_patient), yAxis = 0, showInlegend = TRUE) %>%
+    hc_add_series(Nhom30den40, type = "spline", hcaes(month_name_full, growth_rate), yAxis = 1, showInLegend = TRUE, name = "Growth rate  (31 - 40)") %>%
+    hc_yAxis_multiples(
+      list(title = list(text = "Total patient")),
+      list(title = list(text = "Growth rate "), opposite = TRUE)
+    ) %>%
+    hc_title(text = paste0("Total number of patients in the age group 31 to 40")) %>%
+    hc_subtitle(text = paste0(" 1/2020 - 12/2020"), fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Total Patient")) %>%
+    hc_title(
+      text = "Total number of patients in the age group 31 to 40",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#113CFC", "#F05454")) %>%
+    hc_plotOptions(
+      dataLabels = list(
+        enabled = TRUE,
+        format = "{point.y}",
+        style = list(fontSize = "10px")
+      )
+    )   
+
+
+  Nhom41den50 <- dta_time %>%
+    filter(year == 2020, patient_age_group == "41 to 50") %>%
+    group_by(month_name_full) %>%
+    summarise(total_patient = n()) %>%
+    mutate(growth_rate = (total_patient - lag(total_patient)) / lag(total_patient) * 100)
+  
+  h6 <- hchart(Nhom41den50, type = "column", hcaes(month_name_full, total_patient), yAxis = 0, showInlegend = TRUE) %>%
+    hc_add_series(Nhom41den50, type = "spline", hcaes(month_name_full, growth_rate), yAxis = 1, showInLegend = TRUE, name = "Growth rate(41 - 50)") %>%
+    hc_yAxis_multiples(
+      list(title = list(text = "Total patient")),
+      list(title = list(text = "Growth rate"), opposite = TRUE)
+    ) %>%
+    hc_title(text = paste0("Total number of patients in the age group 41 to 50")) %>%
+    hc_subtitle(text = paste0("Từ tháng 1/2020 đến 12/2020"), fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Total patient")) %>%
+    hc_title(
+      text = "Total number of patients in the age group 41 to 50",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#113CFC", "#F05454")) %>%
+    hc_plotOptions(
+      dataLabels = list(
+        enabled = TRUE,
+        format = "{point.y}",
+        style = list(fontSize = "10px")
+      )
+    )   
+
+  Nhom51den60 <- dta_time %>%
+    filter(year == 2020, patient_age_group == "51 to 60") %>%
+    group_by(month_name_full) %>%
+    summarise(total_patient = n()) %>%
+    mutate(growth_rate = (total_patient - lag(total_patient)) / lag(total_patient) * 100)
+  
+  h7 <- hchart(Nhom51den60, type = "column", hcaes(month_name_full, total_patient), yAxis = 0, showInlegend = TRUE) %>%
+    hc_add_series(Nhom51den60, type = "spline", hcaes(month_name_full, growth_rate), yAxis = 1, showInLegend = TRUE, name = "Growth rate  (51 - 60)") %>%
+    hc_yAxis_multiples(
+      list(title = list(text = "Total patient")),
+      list(title = list(text = "Growth rate"), opposite = TRUE)
+    ) %>%
+    hc_title(text = paste0("Total number of patients in the age group 51 to 60")) %>%
+    hc_subtitle(text = paste0("1/2020 - 12/2020"), fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Total patient")) %>%
+    hc_title(
+      text = "Total number of patients in the age group 51 to 60",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#113CFC", "#F05454")) %>%
+    hc_plotOptions(
+      dataLabels = list(
+        enabled = TRUE,
+        format = "{point.y}",
+        style = list(fontSize = "10px")
+      )
+    )   
+  
+
+  Nhom61den70 <- dta_time %>%
+    filter(year == 2020, patient_age_group == "61 to 70") %>%
+    group_by(month_name_full) %>%
+    summarise(total_patient = n()) %>%
+    mutate(growth_rate = (total_patient - lag(total_patient)) / lag(total_patient) * 100)
+  
+  h8 <- hchart(Nhom61den70, type = "column", hcaes(month_name_full, total_patient), yAxis = 0, showInlegend = TRUE) %>%
+    hc_add_series(Nhom61den70, type = "spline", hcaes(month_name_full, growth_rate), yAxis = 1, showInLegend = TRUE, name = "Growth rate (61 - 70)") %>%
+    hc_yAxis_multiples(
+      list(title = list(text = "Total patient")),
+      list(title = list(text = "Growth rate"), opposite = TRUE)
+    ) %>%
+    hc_title(text = paste0("Total number of patients in the age group 61 to 70")) %>%
+    hc_subtitle(text = paste0(" 1/2020 - 12/2020"), fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Total patient")) %>%
+    hc_title(
+      text = "Total number of patients in the age group 61 to 70",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#113CFC", "#F05454")) %>%
+    hc_plotOptions(
+      dataLabels = list(
+        enabled = TRUE,
+        format = "{point.y}",
+        style = list(fontSize = "10px")
+      )
+    )   
+  
+
+  Nhomtren70 <- dta_time %>%
+    filter(year == 2020, patient_age_group == "> 70") %>%
+    group_by(month_name_full) %>%
+    summarise(total_patient = n()) %>%
+    mutate(growth_rate = (total_patient - lag(total_patient)) / lag(total_patient) * 100)
+  
+  h9 <- hchart(Nhomtren70, type = "column", hcaes(month_name_full, total_patient), yAxis = 0, showInlegend = TRUE) %>%
+    hc_add_series(Nhomtren70, type = "spline", hcaes(month_name_full, growth_rate), yAxis = 1, showInLegend = TRUE, name = "Growth rate (> 70)") %>%
+    hc_yAxis_multiples(
+      list(title = list(text = "Total patient")),
+      list(title = list(text = "Growth rate"), opposite = TRUE)
+    ) %>%
+    hc_title(text = paste0("Total number of patients in the age group over 70")) %>%
+    hc_subtitle(text = paste0(" 1/2020 - 12/2020"), fontSize = "8px") %>%
+    hc_xAxis(title = list(text = "Total patient")) %>%
+    hc_title(
+      text = "Total number of patients in the age group over 70",
+      style = list(color = "#333333", fontSize = "12px", fontWeight = "bold")
+    ) %>%
+    hc_colors(c("#113CFC", "#F05454")) %>%
+    hc_plotOptions(
+      dataLabels = list(
+        enabled = TRUE,
+        format = "{point.y}",
+        style = list(fontSize = "10px")
+      )
+    )   
+  hw_grid(h3,h4,h5,h6,h7,h8,h9, ncol = 4)
+```
+
+
+
+
+# Genders
+```{r}
+ GioiTinh_2020_M <- dta_time %>%
+    filter(year == "2020", patient_gender == "M") %>%
+    group_by(patient_age_group) %>%
+    summarise(Total_patient = n())
+  GioiTinh_2020_F <- dta_time %>%
+    filter(year == "2020", patient_gender == "F") %>%
+    group_by(patient_age_group) %>%
+    summarise(Total_patient = n())
+  
+h10 <- hchart(GioiTinh_2020_M,type = "pie", hcaes(patient_age_group, Total_patient)) %>%
+  hc_title(
+    text = "Proportion of male patients in various age groups in 2020",
+    style = list(color = "#333333", fontSize = "24px", fontWeight = "bold")
+  ) %>%
+  hc_size(height = 360) %>%
+  hc_colors(c("#2D31FA", "#0096FF", "#00D7FF", "#72FFFF", "#A66CFF", "#9C9EFE", "#B1E1FF")) %>%
+  hc_plotOptions(
+    pie = list(
+      allowPointSelect = TRUE,
+      innerSize = 150,
+      depth = 45,
+      cursor = "pointer",
+      dataLabels = list(
+        enabled = TRUE,
+        format = "<b>{point.name}</b>: {point.percentage:.1f}%",
+        style = list(fontSize = "10px")
+      ),
+      tooltip = list(
+        enabled = TRUE,
+        pointFormat = "<b>{point.name}</b>: <b>{point.percentage:.1f}%</b> ({point.y})"
+      )
+    )
+  ) %>%
+  hc_legend(enabled = TRUE)
+# Female
+  h11 <- hchart(GioiTinh_2020_F, type = "pie", hcaes(patient_age_group, Total_patient)) %>%
+    hc_title(
+      text = "Proportion of female patients in various age groups in 2020",
+      style = list(color = "#333333", fontSize = "24px", fontWeight = "bold")
+    ) %>%
+    hc_size(height = 360) %>%
+    hc_colors(c("#2D31FA", "#0096FF", "#00D7FF", "#72FFFF", "#A66CFF", "#9C9EFE", "#B1E1FF")) %>%
+    hc_plotOptions(
+      pie = list(
+        allowPointSelect = TRUE,
+        innerSize = 150,
+        depth = 45,
+        cursor = "pointer",
+        dataLabels = list(
+          enabled = TRUE,
+          format = "<b>{point.name}</b>: {point.percentage:.1f}%",
+          style = list(fontSize = "10px")
+        ),
+        tooltip = list(
+          enabled = TRUE,
+          pointFormat = "<b>{point.name}</b>: <b>{point.percentage:.1f}%</b> ({point.y})"
+        )
+      )
+    ) %>%
+    hc_legend(enabled = TRUE)
+  
+
+  GioiTinh_2021_M <- dta_time %>%
+    filter(year == "2021", patient_gender == "M") %>%
+    group_by(patient_age_group) %>%
+    summarise(Total_patient = n())
+  GioiTinh_2021_F <- dta_time %>%
+    filter(year == "2021", patient_gender == "F") %>%
+    group_by(patient_age_group) %>%
+    summarise(Total_patient = n())
+  
+  h12 <- hchart(GioiTinh_2021_M,type = "pie", hcaes(patient_age_group, Total_patient)) %>%
+    hc_title(
+      text = "Proportion of male patients in various age groups in 2021",
+      style = list(color = "#333333", fontSize = "24px", fontWeight = "bold")
+    ) %>%
+    hc_size(height = 360) %>%
+    hc_colors(c("#2D31FA", "#0096FF", "#00D7FF", "#72FFFF", "#A66CFF", "#9C9EFE", "#B1E1FF")) %>%
+    hc_plotOptions(
+      pie = list(
+        allowPointSelect = TRUE,
+        innerSize = 150,
+        depth = 45,
+        cursor = "pointer",
+        dataLabels = list(
+          enabled = TRUE,
+          format = "<b>{point.name}</b>: {point.percentage:.1f}%",
+          style = list(fontSize = "10px")
+        ),
+        tooltip = list(
+          enabled = TRUE,
+          pointFormat = "<b>{point.name}</b>: <b>{point.percentage:.1f}%</b> ({point.y})"
+        )
+      )
+    ) %>%
+    hc_legend(enabled = TRUE)
+  
+  # Female
+  h13 <- hchart(GioiTinh_2021_F, type = "pie", hcaes(patient_age_group, Total_patient)) %>%
+    hc_title(
+      text = "Proportion of female patients in various age groups in 2021",
+      style = list(color = "#333333", fontSize = "24px", fontWeight = "bold")
+    ) %>%
+    hc_size(height = 360) %>%
+    hc_colors(c("#2D31FA", "#0096FF", "#00D7FF", "#72FFFF", "#A66CFF", "#9C9EFE", "#B1E1FF")) %>%
+    hc_plotOptions(
+      pie = list(
+        allowPointSelect = TRUE,
+        innerSize = 150,
+        depth = 45,
+        cursor = "pointer",
+        dataLabels = list(
+          enabled = TRUE,
+          format = "<b>{point.name}</b>: {point.percentage:.1f}%",
+          style = list(fontSize = "10px")
+        ),
+        tooltip = list(
+          enabled = TRUE,
+          pointFormat = "<b>{point.name}</b>: <b>{point.percentage:.1f}%</b> ({point.y})"
+        )
+      )
+    ) %>%
+    hc_legend(enabled = TRUE)
+hw_grid(h10, h11, h12, h13, ncol = 2) 
+```
+
+
+# Geography
+```{r}
+sale_rev_province <- VungMien %>%
+  group_by(patient_province) %>%
+  summarise(Total_Revenue= sum(round(service_total_paid/1e6,digits = 2))) %>%
+  arrange(desc(Total_Revenue))
+
+geojson_file_path <- file.path("~/Downloads", "map_vietnam(2).json")
+dta_map_vietnam <- geojson_read(geojson_file_path)
+
+highchart() %>%
+  hc_title(text = "Revenue by provinces in Vietnam",
+           style = list(fontSize = "18px", fontWeight = "bold", color = "black")) %>%
+  hc_subtitle(text = "Unit: VND (billion)", align = "left",
+              style = list(fontSize = "12px", fontWeight = "bold", useHTML = TRUE, color = "blue")) %>%
+  hc_add_series_map(dta_map_vietnam, sale_rev_province,
+                    name = "Total revenue",
+                    value = "Total_Revenue",
+                    joinBy = c("name", "patient_province")) %>%
+  hc_colorAxis(min = 100, max = 10000,
+               minColor = "#F8F6F4", maxColor = "#2155CD") %>%
+  hc_chart(zoomType = "xy") %>%
+  hc_legend(align = "center", valueDecimals = 0) %>%
+  hc_size(height = 500) %>%
+  hc_mapNavigation(enabled = TRUE) 
+
+```
+
